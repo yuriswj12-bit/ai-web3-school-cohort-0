@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GMGN Lite - RSI量化交易</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid #30363d; margin-bottom: 20px; }
+        h1 { font-size: 24px; background: linear-gradient(90deg, #58a6ff, #f778ba); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: #161b22; padding: 16px; border-radius: 12px; margin-bottom: 20px; }
+        input, select { background: #0d1117; border: 1px solid #30363d; color: #e6edf3; padding: 10px 14px; border-radius: 8px; font-size: 14px; outline: none; }
+        input:focus, select:focus { border-color: #58a6ff; }
+        input { width: 280px; }
+        button { background: #238636; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+        button:hover { background: #2ea043; }
+        button:disabled { background: #30363d; cursor: not-allowed; }
+        .status { display: flex; gap: 20px; flex-wrap: wrap; background: #161b22; padding: 16px; border-radius: 12px; margin-bottom: 20px; }
+        .status-item { display: flex; flex-direction: column; gap: 4px; }
+        .status-label { font-size: 12px; color: #8b949e; }
+        .status-value { font-size: 18px; font-weight: 600; }
+        .status-value.up { color: #3fb950; }
+        .status-value.down { color: #f85149; }
+        .signal { padding: 20px; border-radius: 12px; margin-bottom: 20px; font-size: 18px; font-weight: 600; text-align: center; }
+        .signal.buy { background: rgba(63, 185, 80, 0.15); border: 2px solid #3fb950; color: #3fb950; }
+        .signal.sell { background: rgba(248, 81, 73, 0.15); border: 2px solid #f85149; color: #f85149; }
+        .signal.wait { background: rgba(139, 148, 158, 0.15); border: 2px solid #8b949e; color: #8b949e; }
+        .chart-container { background: #161b22; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+        #chart { width: 100%; height: 400px; }
+        #rsi-chart { width: 100%; height: 150px; margin-top: 10px; }
+        .trades-panel { background: #161b22; border-radius: 12px; padding: 16px; max-height: 400px; overflow-y: auto; }
+        .trades-panel h3 { margin-bottom: 16px; font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 500; }
+        .trade-buy { color: #3fb950; }
+        .trade-sell { color: #f85149; }
+        .log { background: #161b22; border-radius: 12px; padding: 16px; margin-top: 20px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .log-entry { padding: 4px 0; color: #8b949e; }
+        .log-entry.error { color: #f85149; }
+        .log-entry.success { color: #3fb950; }
+        .info-box { background: #1f6feb22; border: 1px solid #1f6feb; border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 13px; color: #8b949e; }
+        .info-box strong { color: #58a6ff; }
+        .error-box { background: #f8514922; border: 2px solid #f85149; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: none; }
+        .error-box.visible { display: block; }
+        .error-box h3 { color: #f85149; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 GMGN Lite - RSI量化交易</h1>
+        </header>
+        
+        <div class="info-box">
+            <strong>交易策略依据（擒龙术一）：</strong><br>
+            📍 <strong>买入</strong>：RSI&lt;20 + 成交量增加 + 阳线 = 强烈抄底信号<br>
+            📍 <strong>分批止盈</strong>：RSI突破70 + 成交量增加<br>
+            📍 <strong>清仓</strong>：RSI突破70 + 成交量减少 = 顶部信号
+        </div>
+        
+        <!-- 错误显示 -->
+        <div class="error-box" id="errorBox">
+            <h3>❌ 错误</h3>
+            <div id="errorMsg"></div>
+        </div>
+        
+        <div class="controls">
+            <input type="text" id="tokenAddress" placeholder="代币地址" value="0x6d785b0855f371954d8d244dcaf534f1f57e4444">
+            <select id="chain">
+                <option value="solana">Solana</option>
+                <option value="bsc" selected>BSC</option>
+            </select>
+            <select id="interval">
+                <option value="1m">1分钟</option>
+                <option value="5m" selected>5分钟</option>
+                <option value="15m">15分钟</option>
+                <option value="30m">30分钟</option>
+                <option value="1H">1小时</option>
+            </select>
+            <button id="loadBtn" onclick="loadData()">加载数据</button>
+            <button id="refreshBtn" onclick="refreshData()" disabled>刷新</button>
+        </div>
+        
+        <div class="status">
+            <div class="status-item"><span class="status-label">当前价格</span><span class="status-value" id="currentPrice">-</span></div>
+            <div class="status-item"><span class="status-label">RSI (14)</span><span class="status-value" id="rsiValue">-</span></div>
+            <div class="status-item"><span class="status-label">成交量变化</span><span class="status-value" id="volumeChange">-</span></div>
+            <div class="status-item"><span class="status-label">最后更新</span><span class="status-value" id="lastUpdate">-</span></div>
+        </div>
+        
+        <div class="signal wait" id="signal">点击"加载数据"开始分析</div>
+        
+        <div class="chart-container">
+            <div id="chart"></div>
+            <div id="rsi-chart"></div>
+        </div>
+        
+        <div class="log" id="log">
+            <div class="log-entry">📝 系统就绪...</div>
+        </div>
+    </div>
+
+    <script>
+        let chart, rsiChart, candleData = [], trades = [];
+        
+        function log(msg, type = '') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML = `<div class="log-entry ${type}">[${time}] ${msg}</div>` + logDiv.innerHTML;
+        }
+        
+        function showError(msg) {
+            document.getElementById('errorMsg').textContent = msg;
+            document.getElementById('errorBox').classList.add('visible');
+            log('错误: ' + msg, 'error');
+        }
+        
+        function hideError() {
+            document.getElementById('errorBox').classList.remove('visible');
+        }
+        
+        function initCharts() {
+            chart = LightweightCharts.createChart(document.getElementById('chart'), {
+                width: document.getElementById('chart').clientWidth,
+                height: 400,
+                layout: { background: { type: 'solid', color: '#161b22' }, textColor: '#e6edf3' },
+                grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                timeScale: { timeVisible: true, secondsVisible: false }
+            });
+            
+            window.candleSeries = chart.addCandlestickSeries({
+                upColor: '#3fb950', downColor: '#f85149', borderUpColor: '#3fb950', borderDownColor: '#f85149', wickUpColor: '#3fb950', wickDownColor: '#f85149'
+            });
+            
+            window.volumeSeries = chart.addHistogramSeries({
+                color: '#58a6ff', priceFormat: { type: 'volume' }, priceScaleId: 'volume'
+            });
+            chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+            
+            rsiChart = LightweightCharts.createChart(document.getElementById('rsi-chart'), {
+                width: document.getElementById('rsi-chart').clientWidth,
+                height: 150,
+                layout: { background: { type: 'solid', color: '#161b22' }, textColor: '#e6edf3' },
+                grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
+                timeScale: { timeVisible: true, secondsVisible: false }
+            });
+            
+            window.rsiSeries = rsiChart.addLineSeries({ color: '#f778ba', lineWidth: 2 });
+            
+            rsiChart.addLineSeries({ color: '#f85149', lineWidth: 1, lineStyle: 2 }).setData([
+                { time: '2020-01-01', value: 70 }, { time: '2030-01-01', value: 70 }
+            ]);
+            rsiChart.addLineSeries({ color: '#3fb950', lineWidth: 1, lineStyle: 2 }).setData([
+                { time: '2020-01-01', value: 30 }, { time: '2030-01-01', value: 30 }
+            ]);
+            
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: document.getElementById('chart').clientWidth });
+                rsiChart.applyOptions({ width: document.getElementById('rsi-chart').clientWidth });
+            });
+        }
+        
+        // 计算RSI
+        function calculateRSI(data, period = 14) {
+            if (data.length < period + 1) return [];
+            const rsi = [];
+            const changes = [];
+            for (let i = 1; i < data.length; i++) {
+                changes.push(data[i].close - data[i - 1].close);
+            }
+            for (let i = period; i < changes.length; i++) {
+                const periodChanges = changes.slice(i - period, i);
+                const gains = periodChanges.filter(c => c > 0);
+                const losses = periodChanges.filter(c => c < 0).map(c => Math.abs(c));
+                const avgGain = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / period : 0;
+                const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / period : 0;
+                if (avgLoss === 0) {
+                    rsi.push({ time: data[i + 1].time, value: 100 });
+                } else {
+                    const rs = avgGain / avgLoss;
+                    rsi.push({ time: data[i + 1].time, value: 100 - (100 / (1 + rs)) });
+                }
+            }
+            return rsi;
+        }
+        
+        async function executeCommand(cmd) {
+            log('执行: ' + cmd.substring(0, 50) + '...');
+            const response = await fetch('http://127.0.0.1:3000/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd })
+            });
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+            const result = await response.json();
+            if (result.error) {
+                throw new Error(result.error);
+            }
+            return result;
+        }
+        
+        async function loadData() {
+            hideError();
+            const address = document.getElementById('tokenAddress').trim();
+            const chain = document.getElementById('chain').value;
+            const interval = document.getElementById('interval').value;
+            
+            if (!address) {
+                showError('请输入代币地址');
+                return;
+            }
+            
+            const loadBtn = document.getElementById('loadBtn');
+            loadBtn.disabled = true;
+            loadBtn.textContent = '加载中...';
+            
+            log('⬇️ 开始加载: ' + address.substring(0, 10) + '... (' + chain + ')');
+            
+            try {
+                // 获取K线
+                log('获取K线数据...');
+                const klineResult = await executeCommand(`onchainos market kline ${address} --chain ${chain} --bar ${interval} --limit 100`);
+                
+                if (!klineResult.ok || !klineResult.data || klineResult.data.length === 0) {
+                    throw new Error('无法获取K线数据，请检查代币地址和链是否正确');
+                }
+                
+                candleData = klineResult.data.map(k => ({
+                    time: Math.floor(parseInt(k[0]) / 1000),
+                    open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) || 0
+                })).reverse();
+                
+                log('✅ K线数据: ' + candleData.length + ' 根', 'success');
+                
+                // 获取价格
+                const priceResult = await executeCommand(`onchainos market price ${address} --chain ${chain}`);
+                if (priceResult.ok && priceResult.data && priceResult.data[0]) {
+                    document.getElementById('currentPrice').textContent = '$' + parseFloat(priceResult.data[0].price).toFixed(6);
+                }
+                
+                // 更新图表
+                window.candleSeries.setData(candleData);
+                window.volumeSeries.setData(candleData.map(c => ({
+                    time: c.time, value: c.volume, color: c.close >= c.open ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)'
+                })));
+                
+                // RSI
+                const rsiData = calculateRSI(candleData, 14);
+                window.rsiSeries.setData(rsiData);
+                
+                chart.timeScale().fitContent();
+                rsiChart.timeScale().fitContent();
+                
+                // 分析信号
+                if (candleData.length >= 2) {
+                    const currentRSI = rsiData[rsiData.length - 1]?.value || 0;
+                    const currentVolume = candleData[candleData.length - 1].volume;
+                    const prevVolume = candleData[candleData.length - 2].volume;
+                    const volumeChange = ((currentVolume - prevVolume) / prevVolume * 100).toFixed(1);
+                    const isBullish = candleData[candleData.length - 1].close > candleData[candleData.length - 1].open;
+                    
+                    document.getElementById('rsiValue').textContent = currentRSI.toFixed(2);
+                    document.getElementById('volumeChange').textContent = (volumeChange > 0 ? '+' : '') + volumeChange + '%';
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                    
+                    // 信号
+                    const signalEl = document.getElementById('signal');
+                    if (currentRSI < 20 && volumeChange > 0 && isBullish) {
+                        signalEl.textContent = '🔥 强烈买入信号！RSI=' + currentRSI.toFixed(2);
+                        signalEl.className = 'signal buy';
+                    } else if (currentRSI > 70 && volumeChange < 0) {
+                        signalEl.textContent = '🔴 顶部信号，清仓！RSI=' + currentRSI.toFixed(2);
+                        signalEl.className = 'signal sell';
+                    } else if (currentRSI > 70) {
+                        signalEl.textContent = '⚠️ 超买 RSI=' + currentRSI.toFixed(2) + '，注意风险';
+                        signalEl.className = 'signal sell';
+                    } else if (currentRSI < 30) {
+                        signalEl.textContent = '⏳ 超卖 RSI=' + currentRSI.toFixed(2) + '，等待买入时机';
+                        signalEl.className = 'signal wait';
+                    } else {
+                        signalEl.textContent = '➡️ 正常波动 RSI=' + currentRSI.toFixed(2);
+                        signalEl.className = 'signal wait';
+                    }
+                }
+                
+                log('✅ 加载完成!', 'success');
+                document.getElementById('refreshBtn').disabled = false;
+                
+            } catch (error) {
+                showError(error.message);
+                log('错误: ' + error.message, 'error');
+            } finally {
+                loadBtn.disabled = false;
+                loadBtn.textContent = '加载数据';
+            }
+        }
+        
+        async function refreshData() {
+            await loadData();
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            log('图表已初始化');
+        });
+    </script>
+</body>
+</html>
