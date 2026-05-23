@@ -1,11 +1,17 @@
-# Environment variables
-.env
-
-# Hermes Agent files
+# Hermes Agent
 AGENTS.md
-HEARTBEAT.md
-IDENTITY.md
 SOUL.md
-TOOLS.md
 USER.md
+HEARTBEAT.md
+TOOLS.md
 .openclaw/
+intel/
+meetings/
+shared-context/
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
