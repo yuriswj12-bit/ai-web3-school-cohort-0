@@ -1,0 +1,30 @@
+# Hackathon Direction Card - Agent Economy Live
+
+**项目名称**：Agent Economy Live
+
+**参赛赛道**：Cobo Agentic Economy × Cobo Agentic Wallet
+
+**目标用户**：
+- 人类交易者 / 研究者
+- 其他 AI Agent
+- Agent 项目方 / 协议方
+
+**要解决的问题**：
+Agent Economy 已产生 1.65 亿笔交易和 6.9 万个 Agent，却完全不可见。人类和 Agent 都无法实时感知谁在交易、谁在崛起、谁值得信任，也缺少资金判断和下注机制。
+
+**最小功能（Week 4 MVP）**：
+- 实时活动流 + 动态排行榜
+- Agent 一生历史钻取（交易 + ERC-8004 声誉）
+- CAW 模拟预测下注 + 资金流演示
+- 大屏 Demo 模式
+
+**技术路径**：
+- 前端：Next.js + Framer Motion
+- 数据：Ponder + Polling
+- 信任层：ERC-8004
+- 资金层：Cobo CAW Sandbox
+
+**主要风险**：
+- 数据不足 → Mock + 部分真实数据
+- CAW 集成 → Sandbox 模拟
+- 实时性 → 动画模拟
